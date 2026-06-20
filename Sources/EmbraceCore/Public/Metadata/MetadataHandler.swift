@@ -34,6 +34,10 @@ public class MetadataHandler: NSObject {
     private let coreData: CoreDataWrapper?
     internal let synchronizationQueue: DispatchableQueue
 
+    // Properties queued when no session is active; applied on next session start.
+    private var pendingSessionProperties: [(key: String, value: String)] = []
+    private let pendingPropertiesLock = NSLock()
+
     init(
         storage: EmbraceStorage?,
         sessionController: SessionControllable?,
@@ -70,6 +74,28 @@ public class MetadataHandler: NSObject {
         super.init()
 
         cloneDataBase()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onSessionDidStart),
+            name: .embraceSessionDidStart,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func onSessionDidStart() {
+        pendingPropertiesLock.lock()
+        let pending = pendingSessionProperties
+        pendingSessionProperties = []
+        pendingPropertiesLock.unlock()
+
+        for item in pending {
+            try? addMetadata(key: item.key, value: item.value, type: .customProperty, lifespan: .session)
+        }
     }
 
     /// Adds a resource with the given key, value and lifespan.
@@ -91,14 +117,26 @@ public class MetadataHandler: NSObject {
 
     /// Adds a property with the given key, value and lifespan.
     /// If there are 2 properties with the same key but different lifespans, the one with a shorter lifespan will be used.
+    /// When lifespan is `.session` and no session is currently active, the property is queued and applied
+    /// automatically when the next session starts.
     /// - Parameters:
     ///   - key: The key of the property to add. Can not be longer than 128 characters.
     ///   - value: The value of the property to add. Will be truncated if its longer than 1024 characters.
     ///   - lifespan: The lifespan of the property to add.
     /// - Throws: `MetadataError.invalidKey` if the key is longer than 128 characters.
-    /// - Throws: `MetadataError.invalidSession` if a property with a `.session` lifespan is added when there's no active session.
     @objc public func addProperty(key: String, value: String, lifespan: MetadataLifespan = .session) throws {
-        try addMetadata(key: key, value: value, type: .customProperty, lifespan: lifespan)
+        do {
+            try addMetadata(key: key, value: value, type: .customProperty, lifespan: lifespan)
+        } catch let error as MetadataError {
+            if case .invalidSession = error, lifespan == .session {
+                pendingPropertiesLock.lock()
+                pendingSessionProperties.append((key: key, value: value))
+                pendingPropertiesLock.unlock()
+                Embrace.logger.debug("No active session — queuing property '\(key)' for next session start.")
+            } else {
+                throw error
+            }
+        }
     }
 
     func addMetadata(key: String, value: String, type: MetadataRecordType, lifespan: MetadataLifespan) throws {

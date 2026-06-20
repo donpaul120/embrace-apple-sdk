@@ -68,6 +68,10 @@ class MockSessionController: SessionControllable {
 
         currentSession = session
 
+        if let session = session {
+            NotificationCenter.default.post(name: .embraceSessionDidStart, object: session)
+        }
+
         return session
     }
 

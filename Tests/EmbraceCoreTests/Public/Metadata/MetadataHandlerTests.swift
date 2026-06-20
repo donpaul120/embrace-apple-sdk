@@ -95,13 +95,17 @@ final class MetadataHandlerTests: XCTestCase {
 
     @available(*, deprecated)
     func test_currentSession_validation() throws {
-        // given a metadata handler
-        let handler = MetadataHandler(storage: storage, sessionController: sessionController)
+        // given a metadata handler with synchronous queue for deterministic testing
+        let handler = MetadataHandler(
+            storage: storage,
+            sessionController: sessionController,
+            syncronizationQueue: MockQueue()
+        )
 
         // given no current session
         sessionController.endSession()
 
-        // when adding a resource with session lifespan
+        // when adding a resource with session lifespan, it should still throw
         let expectation1 = XCTestExpectation()
         XCTAssertThrowsError(try handler.addResource(key: "test", value: "test", lifespan: .session)) { error in
 
@@ -114,20 +118,17 @@ final class MetadataHandlerTests: XCTestCase {
             }
         }
 
-        // when adding a property with session lifespan
-        let expectation2 = XCTestExpectation()
-        XCTAssertThrowsError(try handler.addProperty(key: "test", value: "test", lifespan: .session)) { error in
+        wait(for: [expectation1], timeout: .defaultTimeout)
 
-            // then it should error out as a MetadataError.invalidSession
-            switch error as! MetadataError {
-            case .invalidSession:
-                expectation2.fulfill()
-            default:
-                XCTAssert(false)
-            }
-        }
+        // when adding a property with session lifespan and no active session,
+        // it should NOT throw — the property is queued for the next session
+        XCTAssertNoThrow(try handler.addProperty(key: "queued_key", value: "queued_value", lifespan: .session))
 
-        wait(for: [expectation1, expectation2], timeout: .defaultTimeout)
+        // when a new session starts, the queued property is applied automatically
+        let newSession = sessionController.startSession(state: .foreground)!
+        let fetched = storage.fetchCustomPropertiesForSessionId(newSession.id!)
+        let keys = fetched.map { $0.key }
+        XCTAssertTrue(keys.contains("queued_key"), "Queued property should appear in the next session")
     }
 
     @available(*, deprecated)
