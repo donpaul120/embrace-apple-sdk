@@ -284,6 +284,9 @@ import OpenTelemetrySdk
             resource: otelResources
         )
 
+        // Propagate the active session span's context into log records so Signoz can link logs to traces.
+        logSharedState.spanContextProvider = { [weak self] in self?.sessionController.currentSessionSpan?.context }
+
         EmbraceOTel.setup(logSharedState: logSharedState)
         sessionLifecycle.setup()
         Embrace.logger.otel = self

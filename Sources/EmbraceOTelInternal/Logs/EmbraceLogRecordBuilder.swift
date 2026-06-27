@@ -64,7 +64,10 @@ class EmbraceLogRecordBuilder: EventBuilder {
         let resource = sharedState.resourceProvider.getResource()
 
         if spanContext == nil {
+            // Caller-supplied context wins; fall back to the active OTel span, then to the session span
+            // so log records carry trace_id/span_id for Signoz log-to-trace correlation.
             spanContext = OpenTelemetry.instance.contextProvider.activeSpan?.context
+                ?? sharedState.spanContextProvider?()
         }
 
         sharedState.processors.forEach {
