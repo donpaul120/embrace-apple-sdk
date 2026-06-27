@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import OpenTelemetryApi
 import OpenTelemetrySdk
 
 #if !EMBRACE_COCOAPOD_BUILDING_SDK
@@ -15,6 +16,7 @@ class DefaultEmbraceLogSharedState: EmbraceLogSharedState {
     let processors: [LogRecordProcessor]
     let resourceProvider: EmbraceResourceProvider
     private(set) var config: any EmbraceLoggerConfig
+    var spanContextProvider: (() -> SpanContext?)?
 
     init(
         config: any EmbraceLoggerConfig,

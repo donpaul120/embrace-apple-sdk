@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import OpenTelemetryApi
 import OpenTelemetrySdk
 
 @testable import EmbraceOTelInternal
@@ -11,6 +12,7 @@ class MockEmbraceLogSharedState: EmbraceLogSharedState {
     var processors: [LogRecordProcessor]
     var config: any EmbraceLoggerConfig
     var resourceProvider: EmbraceResourceProvider
+    var spanContextProvider: (() -> SpanContext?)?
 
     init(
         processors: [LogRecordProcessor] = [],
